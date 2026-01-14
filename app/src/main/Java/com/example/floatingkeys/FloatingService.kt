@@ -9,7 +9,6 @@ import android.os.IBinder
 import android.view.*
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.Toast
 import androidx.core.app.NotificationCompat
 
 class FloatingService : Service() {
@@ -17,127 +16,108 @@ class FloatingService : Service() {
     private lateinit var wm: WindowManager
     private var touchZone: View? = null
     private var bar: View? = null
-    private var taps = 0
-    private var lastTap = 0L
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // IMMEDIATE NOTIFICATION (Must be the very first thing called)
+        startForeground(101, createNotification())
+        return START_STICKY
+    }
 
     override fun onCreate() {
         super.onCreate()
-        // 1. Show message to prove app is trying to start
-        Toast.makeText(this, "Service Created", Toast.LENGTH_SHORT).show()
-
-        // 2. Start Foreground Notification IMMEDIATELY
-        startForeground(101, createNotification())
-
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
-
+        
+        // Use a Try-Catch to ensure the service stays alive even if views fail
         try {
-            createTouchZone()
-            createBar()
-            Toast.makeText(this, "Overlay Active - Tap Top Left", Toast.LENGTH_LONG).show()
+            setupViews()
         } catch (e: Exception) {
-            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
             e.printStackTrace()
         }
     }
 
-    private fun createTouchZone() {
-        touchZone = View(this)
-        touchZone?.setBackgroundColor(0x00000000) // Transparent
-        
-        val params = WindowManager.LayoutParams(
-            150, 150, // 150px size to make sure you can hit it
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) 
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY 
-            else 
-                WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        )
-        params.gravity = Gravity.TOP or Gravity.START
-        
-        touchZone?.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                val now = System.currentTimeMillis()
-                if (now - lastTap > 500) taps = 0
-                taps++
-                lastTap = now
-                if (taps == 2) {
-                    toggleBar()
-                    taps = 0
+    private fun setupViews() {
+        val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else
+            WindowManager.LayoutParams.TYPE_PHONE
+
+        // 1. CREATE TOUCH ZONE (150x150 in top left)
+        touchZone = View(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            val params = WindowManager.LayoutParams(
+                150, 150, overlayType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.TRANSLUCENT
+            ).apply { gravity = Gravity.TOP or Gravity.START }
+            
+            var taps = 0
+            var lastTap = 0L
+            setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_DOWN) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastTap > 600) taps = 0
+                    taps++
+                    lastTap = now
+                    if (taps == 2) {
+                        bar?.visibility = if (bar?.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                        taps = 0
+                    }
                 }
+                true
             }
-            true // Return true to consume the touch
+            wm.addView(this, params)
         }
-        
-        wm.addView(touchZone, params)
-    }
 
-    private fun createBar() {
-        // We build the layout in CODE so it cannot crash due to missing XML
-        val layout = LinearLayout(this)
-        layout.orientation = LinearLayout.HORIZONTAL
-        layout.setBackgroundColor(Color.DKGRAY)
-        layout.setPadding(20, 20, 20, 20)
+        // 2. CREATE BAR (Built in code to avoid XML errors)
+        bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor("#88000000"))
+            setPadding(10, 10, 10, 10)
+            visibility = View.GONE
 
-        val btnUp = Button(this).apply { text = "+"; setOnClickListener { runRoot("input keyevent 24") } }
-        val btnDown = Button(this).apply { text = "-"; setOnClickListener { runRoot("input keyevent 25") } }
-        val btnLock = Button(this).apply { text = "OFF"; setOnClickListener { runRoot("input keyevent 26") } }
+            val btnParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(5, 5, 5, 5) }
+            
+            addView(Button(context).apply { text = "+"; setOnClickListener { runRoot("input keyevent 24") } }, btnParams)
+            addView(Button(context).apply { text = "-"; setOnClickListener { runRoot("input keyevent 25") } }, btnParams)
+            addView(Button(context).apply { text = "L"; setOnClickListener { runRoot("input keyevent 26") } }, btnParams)
 
-        layout.addView(btnUp, LinearLayout.LayoutParams(150, 150))
-        layout.addView(btnDown, LinearLayout.LayoutParams(150, 150))
-        layout.addView(btnLock, LinearLayout.LayoutParams(150, 150))
-
-        bar = layout
-        bar?.visibility = View.GONE
-
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) 
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY 
-            else 
-                WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        )
-        params.gravity = Gravity.CENTER
-        
-        wm.addView(bar, params)
-    }
-
-    private fun toggleBar() {
-        bar?.let {
-            it.visibility = if (it.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            val barParams = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                overlayType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.TRANSLUCENT
+            ).apply { gravity = Gravity.CENTER }
+            
+            wm.addView(this, barParams)
         }
     }
 
     private fun runRoot(cmd: String) {
         try {
             Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
-        } catch (e: Exception) {
-            Toast.makeText(this, "Root Failed", Toast.LENGTH_SHORT).show()
-        }
+        } catch (e: Exception) {}
     }
 
     private fun createNotification(): Notification {
-        val channelId = "floating_keys_id"
+        val channelId = "floating_keys"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Floating Keys", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(channelId, "Active", NotificationManager.IMPORTANCE_MIN)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
-        
-        // Ensure we use a built-in icon to avoid crashes
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Floating Keys Running")
-            .setSmallIcon(android.R.drawable.ic_menu_compass) 
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Floating Keys")
+            .setContentText("Double tap top-left to show")
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
     }
 
+    override fun onBind(intent: Intent?) = null
+    
     override fun onDestroy() {
         super.onDestroy()
-        if (touchZone != null) wm.removeView(touchZone)
-        if (bar != null) wm.removeView(bar)
+        touchZone?.let { wm.removeView(it) }
+        bar?.let { wm.removeView(it) }
     }
-
-    override fun onBind(intent: Intent?): IBinder? = null
 }
