@@ -16,12 +16,18 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: 17
+          distribution: 'temurin'
+          java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      # 1. Install a temporary version of Gradle to create the wrapper
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
+      # 2. Generate the missing gradlew and gradle-wrapper.jar files
+      - name: Generate Wrapper
+        run: gradle wrapper
+
+      # 3. Now chmod will work because the file was just created
       - name: Grant execute permission
         run: chmod +x gradlew
 
@@ -32,4 +38,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
+          
