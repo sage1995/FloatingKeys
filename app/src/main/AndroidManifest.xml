@@ -2,19 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.floatingkeys">
 
-    <!-- Overlay -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
 
-    <!-- Auto start -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
-    <!-- Needed for stability on modern Android -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
 
-    <!-- Prevent OEM killing -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
-    <application     
+    <application
         android:allowBackup="false"
         android:label="Floating Keys"
         android:icon="@mipmap/ic_launcher"
@@ -22,7 +18,6 @@
         android:theme="@style/Theme.FloatingKeys"
         android:usesCleartextTraffic="false">
 
-        <!-- Launcher activity (runs once only) -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -35,14 +30,11 @@
             </intent-filter>
         </activity>
 
-        <!-- Floating overlay service -->
         <service
             android:name=".FloatingService"
             android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection"/>
+            android:exported="false"/>
 
-        <!-- Boot auto start -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
