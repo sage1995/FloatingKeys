@@ -7,32 +7,40 @@ import android.os.Build
 import android.os.IBinder
 import android.view.*
 import android.widget.Button
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 
 class FloatingService : Service() {
 
     private lateinit var wm: WindowManager
-    private lateinit var bar: View
-    private lateinit var touchZone: View
+    private var bar: View? = null
+    private var touchZone: View? = null
     private var taps = 0
     private var lastTap = 0L
 
     override fun onCreate() {
         super.onCreate()
-        wm = getSystemService(WINDOW_SERVICE) as WindowManager
         
-        // 1. Mandatory Foreground Notification for Android 8+
+        // 1. MUST start notification immediately to prevent crash
         startForeground(1, createNotification())
 
-        createTouchZone()
-        createBar()
+        wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        
+        // 2. Wrap View creation in Try-Catch to prevent crashing
+        try {
+            createTouchZone()
+            createBar()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // Optional: Show a toast so you know why it failed
+            Toast.makeText(this, "Error creating views: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun createTouchZone() {
         touchZone = View(this)
-        // Set height to 100px so you can actually find/tap it!
         val p = WindowManager.LayoutParams(
-            100, 100,
+            100, 100, // 100x100 pixels (Top Left Corner)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
@@ -40,14 +48,14 @@ class FloatingService : Service() {
             gravity = Gravity.TOP or Gravity.START
         }
 
-        touchZone.setOnTouchListener { _, e ->
+        touchZone?.setOnTouchListener { _, e ->
             if (e.action == MotionEvent.ACTION_DOWN) {
                 val now = System.currentTimeMillis()
                 if (now - lastTap > 500) taps = 0
                 taps++
                 lastTap = now
-                if (taps == 2) { // Changed to 2 taps as requested
-                    bar.visibility = if (bar.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                if (taps == 2) {
+                    toggleBar()
                     taps = 0
                 }
             }
@@ -57,8 +65,9 @@ class FloatingService : Service() {
     }
 
     private fun createBar() {
+        // Ensure you have res/layout/floating_bar.xml created!
         bar = LayoutInflater.from(this).inflate(R.layout.floating_bar, null)
-        bar.visibility = View.GONE
+        bar?.visibility = View.GONE
 
         val p = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -68,12 +77,18 @@ class FloatingService : Service() {
             PixelFormat.TRANSLUCENT
         )
 
-        // Root commands for buttons
-        bar.findViewById<Button>(R.id.btnVolUp).setOnClickListener { runRoot("input keyevent 24") }
-        bar.findViewById<Button>(R.id.btnVolDown).setOnClickListener { runRoot("input keyevent 25") }
-        bar.findViewById<Button>(R.id.btnLock).setOnClickListener { runRoot("input keyevent 26") }
+        // Assign Button Actions
+        bar?.findViewById<Button>(R.id.btnVolUp)?.setOnClickListener { runRoot("input keyevent 24") }
+        bar?.findViewById<Button>(R.id.btnVolDown)?.setOnClickListener { runRoot("input keyevent 25") }
+        bar?.findViewById<Button>(R.id.btnLock)?.setOnClickListener { runRoot("input keyevent 26") }
 
         wm.addView(bar, p)
+    }
+    
+    private fun toggleBar() {
+        bar?.let {
+            it.visibility = if (it.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
     }
 
     private fun runRoot(cmd: String) {
@@ -85,15 +100,22 @@ class FloatingService : Service() {
     }
 
     private fun createNotification(): Notification {
-        val channelId = "floating_service"
+        val channelId = "floating_keys_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "Floating Keys Service", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("Floating Keys Active")
-            .setSmallIcon(android.R.drawable.ic_menu_compass)
+            .setContentText("Tap top-left corner twice to show keys")
+            .setSmallIcon(android.R.drawable.ic_menu_compass) // Use a system icon to be safe
             .build()
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        if (touchZone != null) wm.removeView(touchZone)
+        if (bar != null) wm.removeView(bar)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
