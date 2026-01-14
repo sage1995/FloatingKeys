@@ -2,54 +2,61 @@ package com.example.floatingkeys
 
 import android.app.*
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.view.*
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 
 class FloatingService : Service() {
 
     private lateinit var wm: WindowManager
-    private var bar: View? = null
     private var touchZone: View? = null
+    private var bar: View? = null
     private var taps = 0
     private var lastTap = 0L
 
     override fun onCreate() {
         super.onCreate()
-        
-        // 1. MUST start notification immediately to prevent crash
-        startForeground(1, createNotification())
+        // 1. Show message to prove app is trying to start
+        Toast.makeText(this, "Service Created", Toast.LENGTH_SHORT).show()
+
+        // 2. Start Foreground Notification IMMEDIATELY
+        startForeground(101, createNotification())
 
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        
-        // 2. Wrap View creation in Try-Catch to prevent crashing
+
         try {
             createTouchZone()
             createBar()
+            Toast.makeText(this, "Overlay Active - Tap Top Left", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
             e.printStackTrace()
-            // Optional: Show a toast so you know why it failed
-            Toast.makeText(this, "Error creating views: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
     private fun createTouchZone() {
         touchZone = View(this)
-        val p = WindowManager.LayoutParams(
-            100, 100, // 100x100 pixels (Top Left Corner)
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+        touchZone?.setBackgroundColor(0x00000000) // Transparent
+        
+        val params = WindowManager.LayoutParams(
+            150, 150, // 150px size to make sure you can hit it
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) 
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY 
+            else 
+                WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-        }
-
-        touchZone?.setOnTouchListener { _, e ->
-            if (e.action == MotionEvent.ACTION_DOWN) {
+        )
+        params.gravity = Gravity.TOP or Gravity.START
+        
+        touchZone?.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
                 val now = System.currentTimeMillis()
                 if (now - lastTap > 500) taps = 0
                 taps++
@@ -59,32 +66,45 @@ class FloatingService : Service() {
                     taps = 0
                 }
             }
-            true
+            true // Return true to consume the touch
         }
-        wm.addView(touchZone, p)
+        
+        wm.addView(touchZone, params)
     }
 
     private fun createBar() {
-        // Ensure you have res/layout/floating_bar.xml created!
-        bar = LayoutInflater.from(this).inflate(R.layout.floating_bar, null)
+        // We build the layout in CODE so it cannot crash due to missing XML
+        val layout = LinearLayout(this)
+        layout.orientation = LinearLayout.HORIZONTAL
+        layout.setBackgroundColor(Color.DKGRAY)
+        layout.setPadding(20, 20, 20, 20)
+
+        val btnUp = Button(this).apply { text = "+"; setOnClickListener { runRoot("input keyevent 24") } }
+        val btnDown = Button(this).apply { text = "-"; setOnClickListener { runRoot("input keyevent 25") } }
+        val btnLock = Button(this).apply { text = "OFF"; setOnClickListener { runRoot("input keyevent 26") } }
+
+        layout.addView(btnUp, LinearLayout.LayoutParams(150, 150))
+        layout.addView(btnDown, LinearLayout.LayoutParams(150, 150))
+        layout.addView(btnLock, LinearLayout.LayoutParams(150, 150))
+
+        bar = layout
         bar?.visibility = View.GONE
 
-        val p = WindowManager.LayoutParams(
+        val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) 
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY 
+            else 
+                WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         )
-
-        // Assign Button Actions
-        bar?.findViewById<Button>(R.id.btnVolUp)?.setOnClickListener { runRoot("input keyevent 24") }
-        bar?.findViewById<Button>(R.id.btnVolDown)?.setOnClickListener { runRoot("input keyevent 25") }
-        bar?.findViewById<Button>(R.id.btnLock)?.setOnClickListener { runRoot("input keyevent 26") }
-
-        wm.addView(bar, p)
+        params.gravity = Gravity.CENTER
+        
+        wm.addView(bar, params)
     }
-    
+
     private fun toggleBar() {
         bar?.let {
             it.visibility = if (it.visibility == View.VISIBLE) View.GONE else View.VISIBLE
@@ -95,23 +115,24 @@ class FloatingService : Service() {
         try {
             Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
         } catch (e: Exception) {
-            e.printStackTrace()
+            Toast.makeText(this, "Root Failed", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun createNotification(): Notification {
-        val channelId = "floating_keys_channel"
+        val channelId = "floating_keys_id"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Floating Keys Service", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(channelId, "Floating Keys", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
+        
+        // Ensure we use a built-in icon to avoid crashes
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Floating Keys Active")
-            .setContentText("Tap top-left corner twice to show keys")
-            .setSmallIcon(android.R.drawable.ic_menu_compass) // Use a system icon to be safe
+            .setContentTitle("Floating Keys Running")
+            .setSmallIcon(android.R.drawable.ic_menu_compass) 
             .build()
     }
-    
+
     override fun onDestroy() {
         super.onDestroy()
         if (touchZone != null) wm.removeView(touchZone)
