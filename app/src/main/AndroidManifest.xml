@@ -18,7 +18,7 @@
         android:name=".App"
         android:allowBackup="false"
         android:label="Floating Keys"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@android:drawable/ic_menu_report_image"
         android:theme="@style/Theme.FloatingKeys"
         android:usesCleartextTraffic="false">
 
