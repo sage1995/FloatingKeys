@@ -15,7 +15,6 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
     <application
-        android:name=".App"
         android:allowBackup="false"
         android:label="Floating Keys"
         android:icon="@android:drawable/ic_menu_report_image"
